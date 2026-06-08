@@ -1,6 +1,27 @@
-import { useState, useEffect } from "react";
-
-const STORAGE_KEY = "diarias-app";
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Controle de Diárias</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body, #root { min-height: 100%; margin: 0; }
+    body { background: #040D1A; font-family: Inter, Arial, sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    .press { transition: transform .12s ease, opacity .12s ease; }
+    .press:active { transform: scale(.98); opacity: .88; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">const { useState, useEffect } = React;const STORAGE_KEY = "diarias-app";
 const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MESES_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const TIPOS = [
@@ -343,7 +364,7 @@ Se não encontrar nenhuma entrada de diária, retorne um array vazio: []`;
   return JSON.parse(limpo);
 }
 
-export default function App() {
+function App() {
   const [diarias,    setDiarias]    = useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{return[]}});
   const [movimentos, setMovimentos] = useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY+"-mov")||"[]")}catch{return[]}});
   const [aba,        setAba]        = useState("diarias");
@@ -996,3 +1017,7 @@ export default function App() {
     </div>
   );
 }
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
