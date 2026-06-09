@@ -314,6 +314,49 @@ async function exportPDFFechamento(diarias, movimentos) {
   abrirBlob(doc, "fechamento_"+hoje2+".pdf");
 }
 
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (ch === '"' && quoted && next === '"') { cell += '"'; i++; continue; }
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (ch === "," && !quoted) { row.push(cell); cell = ""; continue; }
+    if ((ch === "\n" || ch === "\r") && !quoted) {
+      if (ch === "\r" && next === "\n") i++;
+      row.push(cell);
+      if (row.some(v => String(v).trim() !== "")) rows.push(row);
+      row = []; cell = "";
+      continue;
+    }
+    cell += ch;
+  }
+  row.push(cell);
+  if (row.some(v => String(v).trim() !== "")) rows.push(row);
+  return rows;
+}
+
+async function lerCSV(file) {
+  const text = await file.text();
+  const rows = parseCSV(text.trim());
+  if (rows.length < 2) return [];
+  const headers = rows[0].map(h => String(h).trim());
+  return rows.slice(1).map(cols => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (cols[i] || "").trim());
+    return {
+      data: obj.data || hoje(),
+      evento: obj.evento || obj.descricao || obj["descrição"] || "Importado",
+      tipoDiaria: obj.tipoDiaria === "deposito" || obj.tipo === "Depósito" || obj.tipo === "Deposito" ? "deposito" : "rua",
+      valorDiaria: Number(String(obj.valorDiaria || obj.valor || 0).replace(/[R$\s.]/g, "").replace(",", ".")) || 0,
+      almoco: Number(String(obj.almoco || 0).replace(",", ".")) || 0,
+      janta: Number(String(obj.janta || 0).replace(",", ".")) || 0,
+      obs: obj.obs || "Importado via CSV",
+      status: obj.status === "pago" || obj.status === "Pago" ? "pago" : "pendente"
+    };
+  }).filter(item => item.data || item.evento || item.valorDiaria);
+}
+
 async function lerPDFcomIA(file, setLog) {
   setLog("📖 Lendo o arquivo PDF...");
   const base64 = await new Promise((res, rej) => {
@@ -480,32 +523,35 @@ function App() {
     <div style={{minHeight:"100vh",background:"#040D1A",color:txt,fontFamily:"'Inter',sans-serif",maxWidth:520,margin:"0 auto"}}>
       <div style={HDR}>
         <button className="press" onClick={()=>{setTela("lista");setImportLog("");}} style={{background:"transparent",border:"1px solid rgba(14,165,233,.12)",color:muted,fontSize:13,fontWeight:500,padding:"8px 16px",borderRadius:20,fontFamily:"'Inter',sans-serif"}}>← Voltar</button>
-        <span style={{fontSize:16,fontWeight:700,letterSpacing:"-.03em"}}>Importar PDF</span>
+        <span style={{fontSize:16,fontWeight:700,letterSpacing:"-.03em"}}>Importar arquivo</span>
         <div style={{width:72}}/>
       </div>
       <div style={{padding:"24px 20px 100px",display:"flex",flexDirection:"column",gap:16}}>
         <div style={{textAlign:"center",paddingBottom:4}}>
           <div style={{width:64,height:64,background:"linear-gradient(135deg,#0EA5E9,#0284C7)",borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 14px",boxShadow:"0 8px 28px rgba(14,165,233,.35)"}}>🤖</div>
-          <div style={{fontSize:20,fontWeight:800,color:txt,letterSpacing:"-.04em"}}>Importar com IA</div>
-          <div style={{color:muted,fontSize:13,marginTop:6,lineHeight:1.6}}>Envie qualquer PDF com diárias,<br/>planilhas ou extratos — a IA extrai tudo</div>
+          <div style={{fontSize:20,fontWeight:800,color:txt,letterSpacing:"-.04em"}}>Importar diárias</div>
+          <div style={{color:muted,fontSize:13,marginTop:6,lineHeight:1.6}}>Envie um CSV pronto ou um PDF<br/>com diárias, planilhas ou extratos</div>
         </div>
 
         <div style={{...card,padding:18}}>
-          <label style={{...lbl,marginBottom:12}}>Selecionar arquivo PDF</label>
+          <label style={{...lbl,marginBottom:12}}>Selecionar arquivo</label>
           <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"28px 20px",background:"rgba(14,165,233,.04)",border:"2px dashed rgba(14,165,233,.2)",borderRadius:12,cursor:"pointer",textAlign:"center"}}>
             <span style={{fontSize:36}}>📄</span>
             <span style={{color:"#38BDF8",fontWeight:600,fontSize:14}}>Toque para selecionar</span>
-            <span style={{color:muted,fontSize:12}}>Apenas arquivos .pdf</span>
-            <input type="file" accept=".pdf,application/pdf" style={{display:"none"}}
+            <span style={{color:muted,fontSize:12}}>Arquivos .csv ou .pdf</span>
+            <input type="file" accept=".csv,text/csv,.pdf,application/pdf" style={{display:"none"}}
               onChange={async e=>{
                 const file=e.target.files?.[0];
                 if(!file)return;
-                if(!file.name.endsWith(".pdf")&&file.type!=="application/pdf"){alert("Por favor selecione um arquivo PDF.");return;}
+                const nome=file.name.toLowerCase();
+                const isCSV=nome.endsWith(".csv")||file.type==="text/csv";
+                const isPDF=nome.endsWith(".pdf")||file.type==="application/pdf";
+                if(!isCSV&&!isPDF){alert("Por favor selecione um arquivo CSV ou PDF.");return;}
                 setImportando(true);
                 setImportLog("");
                 try{
-                  const itens=await lerPDFcomIA(file,setImportLog);
-                  if(!itens||itens.length===0){setImportLog("⚠️ Nenhuma diária encontrada no PDF. Tente outro arquivo.");setImportando(false);return;}
+                  const itens=isCSV?await lerCSV(file):await lerPDFcomIA(file,setImportLog);
+                  if(!itens||itens.length===0){setImportLog("⚠️ Nenhuma diária encontrada no arquivo. Tente outro arquivo.");setImportando(false);return;}
                   setImportLog("✅ "+itens.length+" diária(s) encontrada(s)! Importando...");
                   const novas=itens.map(item=>({
                     id:uid(),
@@ -516,8 +562,8 @@ function App() {
                     dobra:false,
                     almoco:Number(item.almoco)||0,
                     janta:Number(item.janta)||0,
-                    obs:item.obs||"Importado via PDF",
-                    status:"pendente"
+                    obs:item.obs||(isCSV?"Importado via CSV":"Importado via PDF"),
+                    status:item.status==="pago"?"pago":"pendente"
                   }));
                   setDiarias(d=>[...d,...novas]);
                   setTimeout(()=>{setTela("lista");setImportLog("");showToast(itens.length+" diária(s) importada(s)!");},1000);
