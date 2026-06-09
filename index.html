@@ -27,6 +27,7 @@ const MESES_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho
 const TIPOS = [
   { tipo:"rua",      label:"Diária de Rua",     emoji:"🚶", valor:200, acento:"#38BDF8" },
   { tipo:"deposito", label:"Diária de Depósito", emoji:"🏭", valor:100, acento:"#38BDF8" },
+  { tipo:"personalizada", label:"Diária Personalizada", emoji:"💠", valor:0, acento:"#22D3EE" },
 ];
 const SC = {
   pendente: { label:"Pendente", cor:"#FACC15", bg:"rgba(250,204,21,.1)"  },
@@ -97,9 +98,10 @@ async function exportPDF(diarias, movimentos, mes) {
 
   const dF = diarias.filter(d=>!mes||d.data?.slice(0,7)===mes).sort((a,b)=>a.data.localeCompare(b.data));
   const totD  = dF.filter(d=>d.status!=="cancelado").reduce((s,d)=>s+calcTotal(d),0);
+  const totP  = dF.filter(d=>d.status==="pendente").reduce((s,d)=>s+calcTotal(d),0);
   const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+(m.valor||0),0);
   const totF2 = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+(m.valor||0),0);
-  const saldo = totD-(totA+totF2);
+  const saldo = Math.max(0, totP-(totA+totF2));
 
   doc.setFillColor(...INK);doc.rect(0,0,W,30,"F");
   doc.setFillColor(...PUR);doc.rect(0,0,5,30,"F");
@@ -188,14 +190,14 @@ async function exportPDFFechamento(diarias, movimentos) {
   const chk=(n=10)=>{ if(y+n>282){doc.addPage();doc.setFillColor(...INK);doc.rect(0,0,W,10,"F");y=18;} };
   const sec=(txt,cor)=>{ chk(14);doc.setFillColor(...cor);doc.rect(M,y,W-M*2,8,"F");doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);doc.text(txt,M+4,y+5.5);y+=12; };
 
-  const totD    = diarias.filter(function(d){return d.status!=="cancelado";}).reduce(function(s,d){return s+calcTotal(d);},0);
-  const totA    = movimentos.filter(function(m){return m.tipo==="adiantamento";}).reduce(function(s,m){return s+(m.valor||0);},0);
-  const saldo   = totD - totA;
   const dPend   = diarias.filter(function(d){return d.status==="pendente";});
   const dPagas  = diarias.filter(function(d){return d.status==="pago";});
+  const totD    = diarias.filter(function(d){return d.status!=="cancelado";}).reduce(function(s,d){return s+calcTotal(d);},0);
+  const totA    = movimentos.filter(function(m){return m.tipo==="adiantamento";}).reduce(function(s,m){return s+(m.valor||0);},0);
   const totAlim = diarias.reduce(function(s,d){return s+(d.almoco||0)+(d.janta||0);},0);
   const totPend = dPend.reduce(function(s,d){return s+calcTotal(d);},0);
   const totPago = dPagas.reduce(function(s,d){return s+calcTotal(d);},0);
+  const saldo   = Math.max(0, totPend - totA);
 
   doc.setFillColor(...INK);doc.rect(0,0,W,32,"F");
   doc.setFillColor(...MINT);doc.rect(0,0,5,32,"F");
@@ -347,7 +349,7 @@ async function lerCSV(file) {
     return {
       data: obj.data || hoje(),
       evento: obj.evento || obj.descricao || obj["descrição"] || "Importado",
-      tipoDiaria: obj.tipoDiaria === "deposito" || obj.tipo === "Depósito" || obj.tipo === "Deposito" ? "deposito" : "rua",
+      tipoDiaria: obj.tipoDiaria === "personalizada" || obj.tipo === "Personalizada" ? "personalizada" : (obj.tipoDiaria === "deposito" || obj.tipo === "Depósito" || obj.tipo === "Deposito" ? "deposito" : "rua"),
       valorDiaria: Number(String(obj.valorDiaria || obj.valor || 0).replace(/[R$\s.]/g, "").replace(",", ".")) || 0,
       almoco: Number(String(obj.almoco || 0).replace(",", ".")) || 0,
       janta: Number(String(obj.janta || 0).replace(",", ".")) || 0,
@@ -448,9 +450,10 @@ function App() {
   const showToast=(msg,cor="#22D3EE")=>{setToast({msg,cor});setTimeout(()=>setToast(null),2400);};
 
   const totD  = diarias.filter(d=>d.status!=="cancelado").reduce((s,d)=>s+calcTotal(d),0);
+  const totP  = diarias.filter(d=>d.status==="pendente").reduce((s,d)=>s+calcTotal(d),0);
   const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+(m.valor||0),0);
   const totF  = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+(m.valor||0),0);
-  const saldo = totD-(totA+totF);
+  const saldo = Math.max(0, totP-(totA+totF));
 
   const dFilt=diarias.filter(d=>{
     if(filtroMes&&d.data?.slice(0,7)!==filtroMes)return false;
@@ -468,8 +471,11 @@ function App() {
   };
   const salvarDiaria=()=>{
     if(!form.evento||!form.tipoDiaria){alert("Preencha Evento e Tipo.");return;}
-    if(editId)setDiarias(d=>d.map(x=>x.id===editId?{...form,id:editId}:x));
-    else setDiarias(d=>[...d,{...form,id:uid()}]);
+    const valor=Number(form.valorDiaria)||0;
+    if(valor<=0){alert("Informe o valor da diária.");return;}
+    const diaria={...form,valorDiaria:valor,almoco:Number(form.almoco)||0,janta:Number(form.janta)||0};
+    if(editId)setDiarias(d=>d.map(x=>x.id===editId?{...diaria,id:editId}:x));
+    else setDiarias(d=>[...d,{...diaria,id:uid()}]);
     setTela("lista");showToast(editId?"Diária atualizada":"Diária registrada");
   };
   const marcarPago=(id)=>{setDiarias(d=>d.map(x=>x.id===id?{...x,status:"pago"}:x));showToast("Marcada como paga");};
@@ -557,7 +563,7 @@ function App() {
                     id:uid(),
                     data:item.data||hoje(),
                     evento:item.evento||"Importado",
-                    tipoDiaria:item.tipoDiaria==="deposito"?"deposito":"rua",
+                    tipoDiaria:item.tipoDiaria==="personalizada"?"personalizada":(item.tipoDiaria==="deposito"?"deposito":"rua"),
                     valorDiaria:Number(item.valorDiaria)||0,
                     dobra:false,
                     almoco:Number(item.almoco)||0,
@@ -665,15 +671,21 @@ function App() {
               const sel=form.tipoDiaria===op.tipo;
               return(
                 <button key={op.tipo} className="press" type="button"
-                  onClick={()=>setForm(f=>({...f,tipoDiaria:op.tipo,valorDiaria:f.dobra?op.valor*2:op.valor}))}
+                  onClick={()=>setForm(f=>({...f,tipoDiaria:op.tipo,valorDiaria:op.tipo==="personalizada"?(f.valorDiaria||""):(f.dobra?op.valor*2:op.valor)}))}
                   style={{background:sel?"rgba(14,165,233,.15)":"#0A1E35",border:"1.5px solid "+(sel?op.acento+"66":"rgba(14,165,233,.12)"),borderRadius:14,padding:"18px 12px",textAlign:"center",cursor:"pointer"}}>
                   <div style={{fontSize:28,marginBottom:8}}>{op.emoji}</div>
                   <div style={{fontSize:12,fontWeight:600,color:sel?txt:muted,marginBottom:6}}>{op.label}</div>
-                  <div style={{fontSize:20,fontWeight:800,color:sel?op.acento:"#0D2440"}}>{fm(form.dobra?op.valor*2:op.valor)}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:sel?op.acento:"#0D2440"}}>{op.tipo==="personalizada"?(sel&&form.valorDiaria?fm(form.valorDiaria):"Definir valor"):fm(form.dobra?op.valor*2:op.valor)}</div>
                 </button>
               );
             })}
           </div>
+          {form.tipoDiaria==="personalizada"&&(
+            <div style={{marginTop:14}}>
+              <label style={lbl}>Valor da diária *</label>
+              <input type="number" style={{...inp,fontWeight:800,fontSize:17,color:"#22D3EE"}} placeholder="0,00" value={form.valorDiaria} onChange={e=>setForm(f=>({...f,valorDiaria:parseFloat(e.target.value)||""}))}/>
+            </div>
+          )}
         </div>
 
         <div style={{...card,padding:18}}>
@@ -686,7 +698,7 @@ function App() {
               onClick={()=>setForm(f=>{
                 const nd=!f.dobra;
                 const ti=TIPOS.find(t=>t.tipo===f.tipoDiaria);
-                return {...f,dobra:nd,valorDiaria:ti?(nd?ti.valor*2:ti.valor):f.valorDiaria};
+                return {...f,dobra:nd,valorDiaria:ti&&ti.tipo!=="personalizada"?(nd?ti.valor*2:ti.valor):f.valorDiaria};
               })}
               style={{width:52,height:28,borderRadius:14,border:"none",cursor:"pointer",position:"relative",background:form.dobra?"linear-gradient(135deg,#0EA5E9,#0284C7)":"#0D2440",flexShrink:0,boxShadow:form.dobra?"0 2px 10px rgba(14,165,233,.4)":"none"}}>
               <div style={{position:"absolute",top:3,left:form.dobra?26:3,width:22,height:22,borderRadius:"50%",background:form.dobra?"#fff":"#4B5568",transition:"left .2s"}}/>
@@ -754,7 +766,7 @@ function App() {
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:"12px 20px 4px"}}>
-        {[{emoji:"🚶",label:"Rua",tipo:"rua",acento:"#38BDF8"},{emoji:"🏭",label:"Depósito",tipo:"deposito",acento:"#38BDF8"}].map(c=>{
+        {[{emoji:"🚶",label:"Rua",tipo:"rua",acento:"#38BDF8"},{emoji:"🏭",label:"Depósito",tipo:"deposito",acento:"#38BDF8"},{emoji:"💠",label:"Personalizada",tipo:"personalizada",acento:"#22D3EE"}].map(c=>{
           const n=dFilt.filter(d=>d.tipoDiaria===c.tipo).length;
           const v=dFilt.filter(d=>d.tipoDiaria===c.tipo).reduce((s,d)=>s+calcTotal(d),0);
           return(
