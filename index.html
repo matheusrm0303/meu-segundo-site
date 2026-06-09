@@ -39,7 +39,11 @@ function uid()  { return Date.now().toString(36)+Math.random().toString(36).slic
 function fm(v)  { return (v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
 function fd(iso){ if(!iso)return""; const[y,m,d]=iso.split("-"); return`${d}/${m}/${y}`; }
 function hoje() { return new Date().toISOString().slice(0,10); }
-function calcTotal(d) { return (d.valorDiaria||0)+(d.almoco||0)+(d.janta||0); }
+function num(v) {
+  if (typeof v === "number") return v || 0;
+  return Number(String(v || "0").replace(/[R$\s.]/g, "").replace(",", ".")) || 0;
+}
+function calcTotal(d) { return num(d.valorDiaria)+num(d.almoco)+num(d.janta); }
 
 function loadJsPDF(){
   return new Promise(res=>{
@@ -99,8 +103,8 @@ async function exportPDF(diarias, movimentos, mes) {
   const dF = diarias.filter(d=>!mes||d.data?.slice(0,7)===mes).sort((a,b)=>a.data.localeCompare(b.data));
   const totD  = dF.filter(d=>d.status!=="cancelado").reduce((s,d)=>s+calcTotal(d),0);
   const totP  = dF.filter(d=>d.status==="pendente").reduce((s,d)=>s+calcTotal(d),0);
-  const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+(m.valor||0),0);
-  const totF2 = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+(m.valor||0),0);
+  const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+num(m.valor),0);
+  const totF2 = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+num(m.valor),0);
   const saldo = Math.max(0, totP-(totA+totF2));
 
   doc.setFillColor(...INK);doc.rect(0,0,W,30,"F");
@@ -193,7 +197,7 @@ async function exportPDFFechamento(diarias, movimentos) {
   const dPend   = diarias.filter(function(d){return d.status==="pendente";});
   const dPagas  = diarias.filter(function(d){return d.status==="pago";});
   const totD    = diarias.filter(function(d){return d.status!=="cancelado";}).reduce(function(s,d){return s+calcTotal(d);},0);
-  const totA    = movimentos.filter(function(m){return m.tipo==="adiantamento";}).reduce(function(s,m){return s+(m.valor||0);},0);
+  const totA    = movimentos.filter(function(m){return m.tipo==="adiantamento";}).reduce(function(s,m){return s+num(m.valor);},0);
   const totAlim = diarias.reduce(function(s,d){return s+(d.almoco||0)+(d.janta||0);},0);
   const totPend = dPend.reduce(function(s,d){return s+calcTotal(d);},0);
   const totPago = dPagas.reduce(function(s,d){return s+calcTotal(d);},0);
@@ -451,8 +455,8 @@ function App() {
 
   const totD  = diarias.filter(d=>d.status!=="cancelado").reduce((s,d)=>s+calcTotal(d),0);
   const totP  = diarias.filter(d=>d.status==="pendente").reduce((s,d)=>s+calcTotal(d),0);
-  const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+(m.valor||0),0);
-  const totF  = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+(m.valor||0),0);
+  const totA  = movimentos.filter(m=>m.tipo==="adiantamento").reduce((s,m)=>s+num(m.valor),0);
+  const totF  = movimentos.filter(m=>m.tipo==="fechamento").reduce((s,m)=>s+num(m.valor),0);
   const saldo = Math.max(0, totP-(totA+totF));
 
   const dFilt=diarias.filter(d=>{
@@ -482,11 +486,11 @@ function App() {
   const voltarPendente=(id)=>{setDiarias(d=>d.map(x=>x.id===id?{...x,status:"pendente"}:x));showToast("Voltou para pendente","#FACC15");};
   const excluirDiaria=(id)=>{setDiarias(d=>d.filter(x=>x.id!==id));setConfirmId(null);if(tela==="form")setTela("lista");showToast("Diária removida","#F87171");};
   const salvarMov=()=>{
-    const v=parseFloat(mForm.valor);
+    const v=num(mForm.valor);
     if(!v||v<=0){setMErro("Informe um valor válido.");return;}
-    setMovimentos(m=>[...m,{...mForm,valor:v,id:uid()}]);
+    setMovimentos(m=>[...m,{...mForm,tipo:"adiantamento",valor:v,id:uid()}]);
     setMForm(f=>({...f,valor:"",obs:""}));setMErro("");
-    showToast(mForm.tipo==="adiantamento"?"Adiantamento registrado":"Registrado");
+    showToast("Adiantamento registrado");
   };
   const excluirMov=(id)=>{setMovimentos(m=>m.filter(x=>x.id!==id));showToast("Removido","#F87171");};
   const handlePDF=async()=>{setGerando(true);try{await exportPDF(diarias,movimentos,pdfMes);}catch(e){alert("Erro: "+e.message);}finally{setGerando(false);setTela("lista");}};
@@ -752,10 +756,10 @@ function App() {
       <div style={{margin:"20px 20px 0",borderRadius:20,overflow:"hidden",position:"relative",background:"linear-gradient(145deg,#040D1A,#071E38)",border:"1px solid rgba(14,165,233,.2)"}}>
         <div style={{position:"absolute",top:-60,right:-60,width:200,height:200,background:"radial-gradient(circle,rgba(14,165,233,.08) 0%,transparent 65%)",pointerEvents:"none"}}/>
         <div style={{padding:"24px 22px 20px",position:"relative"}}>
-          <div style={{fontSize:11,fontWeight:600,color:"rgba(56,189,248,.5)",textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:8}}>Saldo Pendente</div>
+          <div style={{fontSize:11,fontWeight:600,color:"rgba(56,189,248,.5)",textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:8}}>A receber</div>
           <div style={{fontSize:38,fontWeight:800,color:saldo>0?"#FACC15":"#22D3EE",letterSpacing:"-.04em",lineHeight:1}}>{fm(saldo)}</div>
           <div style={{display:"flex",gap:0,marginTop:20,paddingTop:16,borderTop:"1px solid rgba(14,165,233,.12)"}}>
-            {[["Total",fm(totD),txt],["Recebido",fm(totA+totF),"#22D3EE"],["Diárias",""+diarias.length,acent2]].map(([l,v,c],i)=>(
+            {[["Pendentes",fm(totP),"#FACC15"],["Adiantado",fm(totA+totF),"#22D3EE"],["Total",fm(totD),txt]].map(([l,v,c],i)=>(
               <div key={l} style={{flex:1,paddingLeft:i>0?16:0,borderLeft:i>0?"1px solid rgba(14,165,233,.12)":"none",marginLeft:i>0?16:0}}>
                 <div style={{fontSize:10,color:muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"1px"}}>{l}</div>
                 <div style={{fontSize:14,fontWeight:700,color:c,marginTop:4}}>{v}</div>
@@ -860,7 +864,7 @@ function App() {
     return(
       <div style={{paddingBottom:100}} className="fadein">
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:"20px 20px 8px"}}>
-          {[["Saldo Pendente",fm(saldo),"#FACC15"],["Adiantamentos",fm(totA),"#38BDF8"]].map(([l,v,c])=>(
+          {[["A receber",fm(saldo),"#FACC15"],["Pendentes",fm(totP),"#22D3EE"],["Adiantamentos",fm(totA),"#38BDF8"]].map(([l,v,c])=>(
             <div key={l} style={{...card,padding:"14px 14px"}}>
               <div style={{fontSize:9,color:muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>{l}</div>
               <div style={{fontSize:15,fontWeight:800,color:c}}>{v}</div>
@@ -876,7 +880,7 @@ function App() {
             </div>
           </div>
           <div style={{background:"rgba(56,189,248,.08)",border:"1px solid rgba(56,189,248,.18)",borderRadius:10,padding:"12px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:12,color:muted,fontWeight:500}}>Saldo disponível</span>
+            <span style={{fontSize:12,color:muted,fontWeight:500}}>Ainda a receber</span>
             <span style={{fontSize:17,fontWeight:800,color:"#FACC15"}}>{fm(saldo)}</span>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
@@ -889,7 +893,7 @@ function App() {
           </div>
           {mErro&&<div style={{color:"#F87171",fontSize:13,padding:"10px 14px",background:"rgba(248,113,113,.08)",border:"1px solid rgba(248,113,113,.18)",borderRadius:10,marginBottom:14,fontWeight:500}}>{mErro}</div>}
           <button className="press" style={{width:"100%",padding:14,background:"linear-gradient(135deg,#0C4A6E,#0369A1)",border:"none",borderRadius:12,color:"#fff",fontWeight:700,fontSize:14,boxShadow:"0 4px 18px rgba(56,189,248,.2)",fontFamily:"'Inter',sans-serif"}}
-            onClick={()=>{setMForm(f=>({...f,tipo:"adiantamento"}));salvarMov();}}>
+            onClick={salvarMov}>
             Registrar Adiantamento
           </button>
         </div>
